@@ -9,8 +9,16 @@ using Windows.ApplicationModel.Background;
 
 namespace AstroPIfms
 {
+    /// <summary>
+    /// Class StartupTask. This class cannot be inherited.
+    /// </summary>
+    /// <seealso cref="Windows.ApplicationModel.Background.IBackgroundTask" />
     public sealed class StartupTask : IBackgroundTask
     {
+        /// <summary>
+        /// Performs the work of a background task. The system calls this method when the associated background task has been triggered.
+        /// </summary>
+        /// <param name="taskInstance">An interface to an instance of the background task. The system creates this instance when the task has been triggered to run.</param>
         public void Run(IBackgroundTaskInstance taskInstance)
         {
             // 

@@ -5,12 +5,12 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("AstroPIfms")]
-[assembly: AssemblyDescription("Gather sensor information from Astro PI Sense hat and push the data to FileMaker Server 16+")]
+[assembly: AssemblyTitle("SenseHatToFms")]
+[assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Connecting Data Inc.")]
-[assembly: AssemblyProduct("AstroPIfms")]
-[assembly: AssemblyCopyright("Copyright © Connecting Data Inc 2017")]
+[assembly: AssemblyCompany("Connecting Data Inc")]
+[assembly: AssemblyProduct("SenseHatToFms")]
+[assembly: AssemblyCopyright("Copyright © 2017 -  Connecting Data Inc.")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
