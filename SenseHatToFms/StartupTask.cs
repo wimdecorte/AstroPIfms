@@ -123,7 +123,10 @@ namespace SenseHatToFms
                     Thread.Sleep(TimeSpan.FromSeconds(5));
 
                 }
-                await fmserver.Logout();
+
+                // don't log out, re-using the token for 12 minutes or so
+                //await fmserver.Logout();
+                //token = string.Empty;
             }
             // clear the display again
             Thread.Sleep(TimeSpan.FromMilliseconds(500));
