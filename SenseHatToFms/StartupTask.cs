@@ -17,7 +17,10 @@ namespace SenseHatToFms
         BackgroundTaskDeferral _deferral;
         ISenseHat senseHat;
         FMS fmserver;
-        
+        string token;
+        DateTime tokenRecieved;
+
+
 
         public async void Run(IBackgroundTaskInstance taskInstance)
         {
@@ -33,12 +36,26 @@ namespace SenseHatToFms
 
             // set the security for fms
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+            // hook into FMS from settings in the config file
+            var resources = new ResourceLoader("config");
+            var fm_server_address = resources.GetString("fm_server_address");
+            var fm_file = resources.GetString("fm_file");
+            var fm_layout = resources.GetString("fm_layout");
+            var fm_account = resources.GetString("fm_account");
+            var fm_pw = resources.GetString("fm_pw");
+
+            fmserver = new FMS(fm_server_address, fm_account, fm_pw);
+            fmserver.SetFile(fm_file);
+            fmserver.SetLayout(fm_layout);
+            token = string.Empty;
 
             // hook into the sense hat
             senseHat = await SenseHatFactory.GetSenseHat();
             // clear the LEDs
             senseHat.Display.Clear();
             senseHat.Display.Update();
+
+
 
             // start the timer
             ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromMinutes(1));
@@ -54,18 +71,18 @@ namespace SenseHatToFms
             // record the start time
             DateTime start = DateTime.Now;
 
-            // hook into FMS from settings in the config file
-            var resources = new ResourceLoader("config");
-            var fm_server_address = resources.GetString("fm_server_address");
-            var fm_file = resources.GetString("fm_file");
-            var fm_layout = resources.GetString("fm_layout");
-            var fm_account = resources.GetString("fm_account");
-            var fm_pw = resources.GetString("fm_pw");
-
-            fmserver = new FMS(fm_server_address, fm_account, fm_pw);
-            fmserver.SetFile(fm_file);
-            fmserver.SetLayout(fm_layout);
-            var token = await fmserver.Authenticate();
+            if (token == null || token == string.Empty)
+            {
+                token = await fmserver.Authenticate();
+                tokenRecieved = DateTime.Now;
+            }
+            else if (DateTime.Now > tokenRecieved.AddMinutes(12))
+            {
+                await fmserver.Logout();
+                token = string.Empty;
+                token = await fmserver.Authenticate();
+                tokenRecieved = DateTime.Now;
+            }
             if (token != string.Empty)
             {
 
