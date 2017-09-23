@@ -37,16 +37,7 @@ namespace SenseHatToFms
             // set the security for fms
             ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
             // hook into FMS from settings in the config file
-            var resources = new ResourceLoader("config");
-            var fm_server_address = resources.GetString("fm_server_address");
-            var fm_file = resources.GetString("fm_file");
-            var fm_layout = resources.GetString("fm_layout");
-            var fm_account = resources.GetString("fm_account");
-            var fm_pw = resources.GetString("fm_pw");
-
-            fmserver = new FMS(fm_server_address, fm_account, fm_pw);
-            fmserver.SetFile(fm_file);
-            fmserver.SetLayout(fm_layout);
+            fmserver = GetFMSinstance();
             token = string.Empty;
 
             // hook into the sense hat
@@ -59,6 +50,22 @@ namespace SenseHatToFms
 
             // start the timer
             ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromMinutes(1));
+        }
+
+        private FMS GetFMSinstance()
+        {
+            var resources = new ResourceLoader("config");
+            var fm_server_address = resources.GetString("fm_server_address");
+            var fm_file = resources.GetString("fm_file");
+            var fm_layout = resources.GetString("fm_layout");
+            var fm_account = resources.GetString("fm_account");
+            var fm_pw = resources.GetString("fm_pw");
+
+            FMS fms = new FMS(fm_server_address, fm_account, fm_pw);
+            fms.SetFile(fm_file);
+            fms.SetLayout(fm_layout);
+
+            return fms;
         }
 
         private async void Timer_Tick(ThreadPoolTimer timer)
@@ -76,10 +83,11 @@ namespace SenseHatToFms
                 token = await fmserver.Authenticate();
                 tokenRecieved = DateTime.Now;
             }
-            else if (DateTime.Now > tokenRecieved.AddMinutes(12))
+            else if (DateTime.Now > tokenRecieved.AddMinutes(14))
             {
-                await fmserver.Logout();
+                int logoutResponse = await fmserver.Logout();
                 token = string.Empty;
+                fmserver = GetFMSinstance();
                 token = await fmserver.Authenticate();
                 tokenRecieved = DateTime.Now;
             }
