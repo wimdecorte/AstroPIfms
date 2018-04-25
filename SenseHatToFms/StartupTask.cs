@@ -72,7 +72,7 @@ namespace SenseHatToFms
             var fm_account = resources.GetString("fm_account");
             var fm_pw = resources.GetString("fm_pw");
 
-            FMS fms = new FMS(fm_server_address, fm_account, fm_pw);
+            FMS17 fms = new FMS17(fm_server_address, fm_account, fm_pw);
             fms.SetFile(fm_file);
             fms.SetLayout(fm_layout);
 
@@ -84,33 +84,44 @@ namespace SenseHatToFms
 
             // update the display
             ShowPixel(pixelCounter);
-            //FillDisplayGreen();
             senseHat.Display.Update();
-            lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
 
             // record the start time
             DateTime start = DateTime.Now;
 
+            // figure out if we need to authenticate to FMS or if we're good
             if (token == null || token == string.Empty)
             {
-                token = await fmserver.Authenticate();
-                tokenRecieved = DateTime.Now;
                 lc.LogMessage("Logging into FMS.", LoggingLevel.Information);
-                lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
+                token = await fmserver.Authenticate();
+                if (token.ToLower().Contains("error"))
+                {
+                    FillDisplayOrange();
+                    lc.LogMessage("Authentication error: " + token, LoggingLevel.Information);
+                    token = string.Empty;
+
+                    // and exit but without throwing an exception, we'll just try again on the next timer event
+                    return;
+                }
+                else
+                {
+                    tokenRecieved = DateTime.Now;
+                    lc.LogMessage("Token " + token + " Received at " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
+                }
             }
             else if (DateTime.Now >= tokenRecieved.AddMinutes(14))
             {
                 int logoutResponse = await fmserver.Logout();
                 token = string.Empty;
                 lc.LogMessage("Logging out of FMS.", LoggingLevel.Information);
-                fmserver = GetFMSinstance();
-                token = await fmserver.Authenticate();
-                tokenRecieved = DateTime.Now;
-                lc.LogMessage("Logging into FMS.", LoggingLevel.Information);
-                lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
+                // we'll just wait for the next timer run
+                return;
             }
             if (token != string.Empty)
             {
+                // how old is the token?
+                TimeSpan age = start - tokenRecieved;
+                lc.LogMessage("Timed run; Token age = " + age, LoggingLevel.Information);
 
                 // get some data from the RPI itself
                 string processorName = string.Empty;
@@ -177,12 +188,18 @@ namespace SenseHatToFms
                     FillDisplayRed();
                     Thread.Sleep(TimeSpan.FromSeconds(4));
                 }
+                // if there was a script error, let's output that too
+                if(fmserver.lastErrorCodeScript != 0)
+                {
+                    lc.LogMessage("Script Error: " + fmserver.lastErrorCodeScript, LoggingLevel.Critical);
+                }
 
-                // don't log out, re-using the token for 12 minutes or so
+                // don't log out, re-using the token for 14 minutes or so
                 //await fmserver.Logout();
                 //token = string.Empty;
             }
             // clear the display again
+            // this determines how long the LED is lit, the timer itself is set up top
             Thread.Sleep(TimeSpan.FromMilliseconds(500));
             senseHat.Display.Clear();
             senseHat.Display.Update();
@@ -222,6 +239,11 @@ namespace SenseHatToFms
         private void FillDisplayRed()
         {
             senseHat.Display.Fill(Color.FromArgb(255, 220, 20, 60)); // crimson
+        }
+
+        private void FillDisplayOrange()
+        {
+            senseHat.Display.Fill(Color.FromArgb(255, 69, 0,0)); // orangered
         }
 
         private void FillDisplayGreen()
