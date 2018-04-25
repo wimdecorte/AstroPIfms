@@ -60,7 +60,7 @@ namespace SenseHatToFms
             lc.LogMessage("Starting up.");
 
             // start the timer
-            ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromSeconds(1));
+            ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromSeconds(2));
         }
 
         private FMS GetFMSinstance()
@@ -113,10 +113,12 @@ namespace SenseHatToFms
             {
                 int logoutResponse = await fmserver.Logout();
                 token = string.Empty;
+                tokenRecieved = DateTime.Now;
                 lc.LogMessage("Logging out of FMS.", LoggingLevel.Information);
                 // we'll just wait for the next timer run
                 return;
             }
+
             if (token != string.Empty)
             {
                 // how old is the token?
@@ -146,6 +148,7 @@ namespace SenseHatToFms
                 {
                     senseHat.Sensors.ImuSensor.Update();
                     senseHat.Sensors.HumiditySensor.Update();
+                    senseHat.Sensors.PressureSensor.Update();
                     humidityReadout = senseHat.Sensors.HumiditySensor.Readings.Humidity;
                     tempReadout = senseHat.Sensors.Temperature;
                     pressureReadout = senseHat.Sensors.Pressure;
