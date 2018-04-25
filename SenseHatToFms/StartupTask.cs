@@ -7,6 +7,8 @@ using Emmellsoft.IoT.Rpi.SenseHat;
 using Windows.ApplicationModel.Resources;
 using Windows.UI;
 using System.Threading;
+using Windows.Foundation.Diagnostics;
+
 
 namespace SenseHatToFms
 {
@@ -19,6 +21,8 @@ namespace SenseHatToFms
         FMS fmserver;
         string token;
         DateTime tokenRecieved;
+        LoggingChannel lc;
+        int pixelCounter;   // zero-based
 
 
 
@@ -40,16 +44,23 @@ namespace SenseHatToFms
             fmserver = GetFMSinstance();
             token = string.Empty;
 
+
             // hook into the sense hat
             senseHat = await SenseHatFactory.GetSenseHat();
             // clear the LEDs
             senseHat.Display.Clear();
             senseHat.Display.Update();
+            pixelCounter = 0;
 
+            // log into the Events Tracing for Windows ETW
+            // on the Device Portal, ETW tab, pick "Microsoft-Windows-Diagnostics-LoggingChannel" from the registered providers
+            // pick level 5 and enable
 
+            lc = new LoggingChannel("SenseHatFms", null, new Guid("4bd2826e-54a1-4ba9-bf63-92b73ea1ac4a"));
+            lc.LogMessage("Starting up.");
 
             // start the timer
-            ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromMinutes(1));
+            ThreadPoolTimer timer = ThreadPoolTimer.CreatePeriodicTimer(Timer_Tick, TimeSpan.FromSeconds(1));
         }
 
         private FMS GetFMSinstance()
@@ -72,8 +83,10 @@ namespace SenseHatToFms
         {
 
             // update the display
-            FillDisplayGreen();
+            ShowPixel(pixelCounter);
+            //FillDisplayGreen();
             senseHat.Display.Update();
+            lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
 
             // record the start time
             DateTime start = DateTime.Now;
@@ -82,28 +95,54 @@ namespace SenseHatToFms
             {
                 token = await fmserver.Authenticate();
                 tokenRecieved = DateTime.Now;
+                lc.LogMessage("Logging into FMS.", LoggingLevel.Information);
+                lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
             }
-            else if (DateTime.Now > tokenRecieved.AddMinutes(14))
+            else if (DateTime.Now >= tokenRecieved.AddMinutes(14))
             {
                 int logoutResponse = await fmserver.Logout();
                 token = string.Empty;
+                lc.LogMessage("Logging out of FMS.", LoggingLevel.Information);
                 fmserver = GetFMSinstance();
                 token = await fmserver.Authenticate();
                 tokenRecieved = DateTime.Now;
+                lc.LogMessage("Logging into FMS.", LoggingLevel.Information);
+                lc.LogMessage("Token Received = " + tokenRecieved.ToLongTimeString(), LoggingLevel.Information);
             }
             if (token != string.Empty)
             {
 
                 // get some data from the RPI itself
-                var processorName = Raspberry.Board.Current.ProcessorName;
-                var rpiModel = Raspberry.Board.Current.Model.ToString();
+                string processorName = string.Empty;
+                string rpiModel = string.Empty;
+                string serial = string.Empty;
+                try
+                {
+                    processorName = Raspberry.Board.Current.ProcessorName;
+                    rpiModel = Raspberry.Board.Current.Model.ToString();
+                    serial = Raspberry.Board.Current.SerialNumber;
+                }
+                catch(Exception ex)
+                {
+                    lc.LogMessage("Error in Rpi package = " + ex.Message, LoggingLevel.Error);
+                }
 
                 // update the sensehat sensors and get the data
-                senseHat.Sensors.ImuSensor.Update();
-                senseHat.Sensors.HumiditySensor.Update();
-                var humidityReadout = senseHat.Sensors.HumiditySensor.Readings.Humidity;
-                var tempReadout = senseHat.Sensors.Temperature;
-                var pressureReadout = senseHat.Sensors.Pressure;
+                double humidityReadout = 0;
+                double? tempReadout = 0;
+                double? pressureReadout = 0;
+                try
+                {
+                    senseHat.Sensors.ImuSensor.Update();
+                    senseHat.Sensors.HumiditySensor.Update();
+                    humidityReadout = senseHat.Sensors.HumiditySensor.Readings.Humidity;
+                    tempReadout = senseHat.Sensors.Temperature;
+                    pressureReadout = senseHat.Sensors.Pressure;
+                }
+                catch(Exception ex)
+                {
+                    lc.LogMessage("Error in Rpi package = " + ex.Message, LoggingLevel.Error);
+                }
 
                 // write it to FMS
                 var request = fmserver.NewRecordRequest();
@@ -114,6 +153,9 @@ namespace SenseHatToFms
                 if(rpiModel !=null)
                     request.AddField("rpiModel", rpiModel);
 
+                if (serial != null)
+                    request.AddField("rpiSerial", serial);
+
                 request.AddField("when_start", start.ToString());
                 request.AddField("humidity", humidityReadout.ToString());
                 request.AddField("temperature", tempReadout.ToString());
@@ -122,14 +164,18 @@ namespace SenseHatToFms
                     request.AddField("pressure", pressureReadout.ToString());
 
                 request.AddField("when", DateTime.Now.ToString());
-                
+
+
+                // add a script to run
+                // calculate the time gap since the last record
+                request.AddScript(ScriptTypes.after, "calculate_gap");
 
                 var response = await request.Execute();
-                if(response.errorCode != 0)
+                if(fmserver.lastErrorCode != 0)
                 {
+                    lc.LogMessage("Error on sending data to FMS: " + fmserver.lastErrorMessage + " (code=" + fmserver.lastErrorCode + ")", LoggingLevel.Critical);
                     FillDisplayRed();
-                    Thread.Sleep(TimeSpan.FromSeconds(5));
-
+                    Thread.Sleep(TimeSpan.FromSeconds(4));
                 }
 
                 // don't log out, re-using the token for 12 minutes or so
@@ -140,6 +186,10 @@ namespace SenseHatToFms
             Thread.Sleep(TimeSpan.FromMilliseconds(500));
             senseHat.Display.Clear();
             senseHat.Display.Update();
+
+            pixelCounter++;
+            if (pixelCounter > 63)
+                pixelCounter = 0;
         }
 
         private void FillDisplaySoftRandom()
@@ -158,6 +208,15 @@ namespace SenseHatToFms
                     senseHat.Display.Screen[x, y] = pixel;
                 }
             }
+        }
+
+        private void ShowPixel(int counter)
+        {
+            // counter will be 0 to 63
+            int x = (counter / 8);
+            int y = counter % 8; // 0-7
+            Color pixel = Color.FromArgb(255, 127, 255, 0); // chartreuse
+            senseHat.Display.Screen[x, y] = pixel;
         }
 
         private void FillDisplayRed()
